@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Generador de Boletas</title>
+  <style>
+    :root {
+      --primary: #006eff;
+      --primary-dark: #004fcc;
+      --success: #28a745;
+      --error: #dc3545;
+      --bg: #f8f9fa;
+      --shadow: 0 8px 24px rgba(0,0,0,0.1);
+      --radius: 12px;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Poppins", Verdana, Geneva, Tahoma, sans-serif, system-ui, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--primary) 0%, #00c2ff 100%);
+      color: #333;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2rem;
+      width: 95%;
+      max-width: 420px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .container:hover {
+      box-shadow: 0 12px 28px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      color: var(--primary-dark);
+      margin-bottom: 0.5rem;
+    }
+
+    p.subtitle {
+      color: #666;
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      margin-bottom: 1rem;
+    }
+
+    .form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      align-items: center;
+    }
+
+    input[type="number"] {
+      padding: 0.8rem;
+      font-size: 1rem;
+      width: 80%;
+      border: 2px solid #ddd;
+      border-radius: var(--radius);
+      outline: none;
+      transition: border-color 0.2s ease;
+      text-align: center;
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0,110,255,0.15);
+    }
+
+    /* Ocultar flechas en inputs tipo number */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    button {
+      width: 80%;
+      padding: 0.9rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+
+    #status {
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      min-height: 22px;
+      font-weight: 500;
+    }
+
+    #status.error {
+      color: var(--error);
+      animation: fadeIn 0.3s ease;
+    }
+
+    #status.success {
+      color: var(--success);
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 1.5rem;
+      }
+      h1 {
+        font-size: 1.3rem;
+      }
+      input, button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎟️ Generador de Boletas</h1>
+    <p class="subtitle">Ingrese un código válido de hasta 6 dígitos para generar su boleta personalizada.</p>
+
+    <canvas id="cv"></canvas>
+
+    <div class="form">
+      <input id="codigo" type="number" min="0" max="999999" placeholder="Ej: 123456">
+      <button id="generar">Generar y descargar</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const IMG_SRC = "boleta.png";
+    const JSON_SRC = "codigos.json";
+    const FONT_PCT = 0.020;
+    const PADDING_PCT = 0.055;
+    const EXTRA_UP_PCT = 0.02;
+
+    const canvas = document.getElementById("cv");
+    const ctx = canvas.getContext("2d");
+    const status = document.getElementById("status");
+    const btn = document.getElementById("generar");
+    const input = document.getElementById("codigo");
+
+    const img = new Image();
+    img.src = IMG_SRC;
+
+    let codigos = [];
+
+    // Cargar los códigos al inicio
+    fetch(JSON_SRC)
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) codigos = data.map(c => String(c));
+        else setStatus("Error: el JSON no contiene un array válido.", "error");
+      })
+      .catch(() => setStatus("Error al cargar codigos.json", "error"));
+
+    // Evita ingresar más de 6 dígitos
+    input.addEventListener("input", () => {
+      if (input.value.length > 6) {
+        input.value = input.value.slice(0, 6);
+      }
+    });
+
+    btn.addEventListener("click", async () => {
+      const codigoIngresado = input.value.trim();
+
+      if (codigoIngresado === "" || isNaN(codigoIngresado)) {
+        setStatus("⚠️ Ingrese un número válido.", "error");
+        return;
+      }
+
+      if (codigoIngresado.length !== 6) {
+        setStatus("⚠️ El código debe tener 6 dígitos.", "error");
+        return;
+      }
+
+      if (!codigos.includes(codigoIngresado)) {
+        setStatus(`❌ El código ${codigoIngresado} no existe.`, "error");
+        return;
+      }
+
+      await new Promise(resolve => {
+        if (img.complete) resolve();
+        else img.onload = resolve;
+      });
+
+      await drawBoleta(codigoIngresado);
+
+      const link = document.createElement("a");
+      link.download = `boleta_${codigoIngresado}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      setStatus(`✅ Boleta generada correctamente (${codigoIngresado})`, "success");
+    });
+
+    function setStatus(text, type) {
+      status.textContent = text;
+      status.className = type;
+    }
+
+    async function drawBoleta(NUMERO) {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const fontSize = Math.round(w * FONT_PCT);
+      const pad = Math.round(Math.min(w, h) * PADDING_PCT);
+      const extraUp = Math.round(h * EXTRA_UP_PCT);
+
+      ctx.font = `bold ${fontSize}px Poppins, Verdana`;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "#000";
+
+      const x = w - pad;
+      const y = h - pad - extraUp;
+      ctx.fillText(NUMERO, x, y);
+    }
+  </script>
+</body>
+</html>
